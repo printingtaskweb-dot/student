@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { Button, Input, Textarea, Select, Card, MultiSelect } from '@/components/ui'
-import { Check, ChevronRight, ChevronLeft, GraduationCap, Sparkles, CheckCircle2 } from 'lucide-react'
-import { BUILTIN_CATEGORIES, getAvailableCategories, getAvailableSkills } from '@/lib/categories'
+import { Check, ChevronRight, ChevronLeft, GraduationCap, Sparkles, CheckCircle2, MapPin, Phone } from 'lucide-react'
+import { BUILTIN_CATEGORIES, getAvailableSkills } from '@/lib/categories'
 import toast from 'react-hot-toast'
 
-const steps = [
+const STEPS = [
   'Basic Info',
-  'Domain Category',
+  'Your Domain',
   'Skills',
   'Experience',
   'Education',
@@ -17,15 +17,15 @@ const steps = [
   'Portfolio & Bio',
 ]
 
-const expLevels = [
-  { value: 'fresher', label: 'Fresher / Student (No prior experience)' },
-  { value: 'less_than_1_year', label: 'Less than 1 year (Projects / Internships)' },
-  { value: '1_2_years', label: '1 - 2 years' },
-  { value: '2_5_years', label: '2 - 5 years' },
-  { value: '5_plus_years', label: '5+ years' },
+const EXP_LEVELS = [
+  { value: 'fresher', label: '🎓 Fresher / Student (No prior experience)' },
+  { value: 'less_than_1_year', label: '📌 Less than 1 year (Projects / Internships)' },
+  { value: '1_2_years', label: '💼 1 – 2 years' },
+  { value: '2_5_years', label: '🚀 2 – 5 years' },
+  { value: '5_plus_years', label: '⭐ 5+ years' },
 ]
 
-const availabilityTypes = [
+const AVAILABILITY_TYPES = [
   { value: 'internship', label: '🎓 Internship (Part-time / Full-time)' },
   { value: 'part_time', label: '⏱️ Part-time (15-20 hrs/week)' },
   { value: 'full_time', label: '💼 Full-time Job' },
@@ -33,31 +33,56 @@ const availabilityTypes = [
   { value: 'project_based', label: '🚀 Project-based Micro-tasks' },
 ]
 
+const WORK_MODES = [
+  { value: 'remote', label: '🌐 Remote (Work from Anywhere)' },
+  { value: 'hybrid', label: '🔀 Hybrid (Mix of Remote & Office)' },
+  { value: 'on_site', label: '🏢 On-site Office' },
+]
+
+const CAT_ICONS: Record<string, string> = {
+  'software': '💻', 'web': '💻', 'development': '💻', 'dev': '💻',
+  'design': '🎨', 'ui': '🎨', 'ux': '🎨',
+  'marketing': '📈', 'growth': '📈',
+  'video': '🎬', 'media': '🎬', 'content': '✍️',
+  'data': '🤖', 'ai': '🤖', 'ml': '🤖',
+  'finance': '💰', 'business': '💼', 'sales': '📊',
+  'writing': '✍️', 'technical': '✍️',
+  'admin': '🖥️', 'operations': '🖥️',
+}
+
+function getCatIcon(cat: any): string {
+  if (cat.icon && !cat.icon.includes('dY') && !cat.icon.includes('0x') && cat.icon.length <= 4) return cat.icon
+  const name = (cat.name || '').toLowerCase()
+  for (const [key, icon] of Object.entries(CAT_ICONS)) {
+    if (name.includes(key)) return icon
+  }
+  return '💼'
+}
+
 export default function StudentOnboarding() {
   const { user, refreshUser } = useAuth()
   const navigate = useNavigate()
   const [currentStep, setCurrentStep] = useState(0)
-
-  // DB Data
-  const [categories, setCategories] = useState<any[]>(BUILTIN_CATEGORIES)
-  const [skills, setSkills] = useState<any[]>([])
-  const [loadingDb, setLoadingDb] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  // Form State
+  const [categories, setCategories] = useState<any[]>(BUILTIN_CATEGORIES)
+  const [dbSkills, setDbSkills] = useState<any[]>([])
+  const [loadingCats, setLoadingCats] = useState(true)
+
   const [formData, setFormData] = useState({
     fullName: user?.full_name || '',
     phone: '',
     location: '',
-    categoryId: 'cat-dev',
-    categoryName: 'Software & Web Development',
-    selectedSkillIds: ['sk-react', 'sk-ts', 'sk-node'] as string[],
+    categoryId: '',
+    categoryName: '',
+    categoryIsDbRecord: false,
+    selectedSkillIds: [] as string[],
     experienceLevel: 'fresher',
     institution: '',
     degree: '',
     fieldOfStudy: '',
-    graduationYear: new Date().getFullYear().toString(),
-    availabilityTypes: ['internship', 'freelance'] as string[],
+    graduationYear: (new Date().getFullYear() + 1).toString(),
+    availabilityTypes: ['internship'] as string[],
     preferredWorkMode: 'remote',
     headline: '',
     bio: '',
@@ -69,68 +94,78 @@ export default function StudentOnboarding() {
 
   useEffect(() => {
     async function loadData() {
+      setLoadingCats(true)
       try {
-        setLoadingDb(true)
-        const { data: catData } = await supabase.from('categories').select('*').eq('is_active', true).order('sort_order')
-        const { data: skillData } = await supabase.from('skills').select('*').eq('is_active', true)
+        const [{ data: catData }, { data: skillData }] = await Promise.all([
+          supabase.from('categories').select('*').eq('is_active', true).order('sort_order'),
+          supabase.from('skills').select('*').eq('is_active', true).order('name'),
+        ])
 
-        if (catData && catData.length > 0) {
-          setCategories(catData)
-        } else {
-          setCategories(BUILTIN_CATEGORIES)
-        }
+        if (catData && catData.length > 0) setCategories(catData)
+        else setCategories(BUILTIN_CATEGORIES)
 
-        if (skillData && skillData.length > 0) {
-          setSkills(skillData)
-        }
-      } catch (err) {
-        console.warn('Using built-in categories fallback:', err)
+        if (skillData && skillData.length > 0) setDbSkills(skillData)
+      } catch {
         setCategories(BUILTIN_CATEGORIES)
       } finally {
-        setLoadingDb(false)
+        setLoadingCats(false)
       }
     }
     loadData()
   }, [])
 
-  // Resolve available skills based on chosen category
-  const availableSkillsList = getAvailableSkills(formData.categoryId, skills.length > 0 ? skills : undefined)
-  const skillOptions = availableSkillsList.map((s: any) => ({
-    value: s.id || s.slug || s.name,
+  const availableSkills = (() => {
+    if (dbSkills.length > 0 && formData.categoryId) {
+      if (formData.categoryIsDbRecord) {
+        const filtered = dbSkills.filter((s: any) => s.category_id === formData.categoryId)
+        return filtered.length > 0 ? filtered : dbSkills
+      }
+      return dbSkills
+    }
+    return getAvailableSkills(formData.categoryId, undefined)
+  })()
+
+  const skillOptions = availableSkills.map((s: any) => ({
+    value: s.id,
     label: s.name,
   }))
 
   const handleSelectCategory = (cat: any) => {
-    const defaultSkillsForCat = getAvailableSkills(cat.id || cat.slug).slice(0, 3).map((s: any) => s.id || s.slug || s.name)
+    const isDbCat = !!(cat.id && cat.id.length > 30)
+    const defaultSkills = dbSkills.length > 0
+      ? dbSkills.filter((s: any) => s.category_id === cat.id).slice(0, 5).map((s: any) => s.id)
+      : getAvailableSkills(cat.id, undefined).slice(0, 4).map((s: any) => s.id || s.slug || s.name)
+
     setFormData(prev => ({
       ...prev,
       categoryId: cat.id,
       categoryName: cat.name,
-      selectedSkillIds: defaultSkillsForCat,
-      headline: prev.headline || `${cat.name} Specialist`,
+      categoryIsDbRecord: isDbCat,
+      selectedSkillIds: defaultSkills,
+      headline: prev.headline || `${cat.name} Enthusiast`,
     }))
   }
 
   const handleNext = () => {
-    if (currentStep === 0 && !formData.fullName) {
+    if (currentStep === 0 && !formData.fullName.trim()) {
       toast.error('Full name is required')
       return
     }
     if (currentStep === 1 && !formData.categoryId) {
-      toast.error('Please select a primary domain category')
+      toast.error('Please select your primary domain category')
       return
     }
     if (currentStep === 2 && formData.selectedSkillIds.length === 0) {
       toast.error('Please select at least one skill')
       return
     }
-    if (currentStep < steps.length - 1) {
-      setCurrentStep(prev => prev + 1)
+    if (currentStep < STEPS.length - 1) {
+      setCurrentStep(p => p + 1)
     }
   }
 
   const handleBack = () => {
-    if (currentStep > 0) setCurrentStep(prev => prev - 1)
+    if (currentStep > 0) setCurrentStep(p => p - 1)
   }
 
   const handleSubmit = async () => {
@@ -138,101 +173,109 @@ export default function StudentOnboarding() {
     setSubmitting(true)
 
     try {
-      // 1. Update Profile
-      await supabase
-        .from('profiles')
-        .update({
-          full_name: formData.fullName,
-          phone: formData.phone,
-          onboarding_completed: true,
-        })
-        .eq('id', user.id)
+      // 1. Update Profiles table
+      const { error: profErr } = await supabase.from('profiles').update({
+        full_name: formData.fullName,
+        phone: formData.phone || null,
+        onboarding_completed: true,
+      }).eq('id', user.id)
 
-      // 2. Create / Upsert Student Profile
-      // Check if categoryId is a UUID from database or a string code
-      const isDbUuid = formData.categoryId && formData.categoryId.includes('-') && formData.categoryId.length > 30
+      if (profErr) console.warn('profiles update error:', profErr.message)
 
-      const studentProfilePayload: any = {
+      // 2. Upsert Student Profile using onConflict: user_id
+      const spPayload: any = {
         user_id: user.id,
         headline: formData.headline || `${formData.categoryName} Enthusiast`,
-        bio: formData.bio || `Passionate student focusing on ${formData.categoryName}. Ready to contribute to meaningful projects.`,
-        location: formData.location || 'Remote',
+        bio: formData.bio || `Passionate student in ${formData.categoryName}. Ready to contribute.`,
+        location: formData.location || 'India',
         experience_level: formData.experienceLevel as any,
-        resume_url: formData.resumeUrl,
-        portfolio_url: formData.portfolioUrl,
-        github_url: formData.githubUrl,
-        linkedin_url: formData.linkedinUrl,
-        profile_completion: 90,
+        resume_url: formData.resumeUrl || null,
+        portfolio_url: formData.portfolioUrl || null,
+        github_url: formData.githubUrl || null,
+        linkedin_url: formData.linkedinUrl || null,
+        is_available: true,
+        is_open_to_work: true,
+        profile_completion: 80,
       }
 
-      // Only set primary_category_id if it's a real DB UUID
-      if (isDbUuid) {
-        studentProfilePayload.primary_category_id = formData.categoryId
+      if (formData.categoryIsDbRecord && formData.categoryId) {
+        spPayload.primary_category_id = formData.categoryId
       }
 
       const { data: spData, error: spErr } = await supabase
         .from('student_profiles')
-        .upsert(studentProfilePayload)
+        .upsert(spPayload, { onConflict: 'user_id' })
         .select()
-        .maybeSingle()
+        .single()
 
       if (spErr) {
-        console.warn('Notice saving student_profiles:', spErr.message)
+        console.error('student_profiles upsert error:', spErr.message)
       }
 
-      // 3. Add Skills if student_profile ID exists
-      if (spData?.id && formData.selectedSkillIds.length > 0) {
+      // Get real student_profile.id even if select failed
+      let studentProfileId = spData?.id
+      if (!studentProfileId) {
+        const { data: existingSp } = await supabase
+          .from('student_profiles')
+          .select('id')
+          .eq('user_id', user.id)
+          .single()
+        studentProfileId = existingSp?.id
+      }
+
+      // 3. Save Skills
+      if (studentProfileId && formData.selectedSkillIds.length > 0) {
         try {
-          // Add skills if DB skill table exists
-          const validDbSkills = formData.selectedSkillIds.filter(id => id.length > 30)
-          if (validDbSkills.length > 0) {
-            await supabase.from('student_skills').delete().eq('student_id', spData.id)
-            const studentSkills = validDbSkills.map(skId => ({
-              student_id: spData.id,
-              skill_id: skId,
-              proficiency: 'intermediate' as const,
-            }))
-            await supabase.from('student_skills').insert(studentSkills)
+          const validIds = formData.selectedSkillIds.filter(id => id && id.length > 20)
+          if (validIds.length > 0) {
+            await supabase.from('student_skills').delete().eq('student_id', studentProfileId)
+            await supabase.from('student_skills').insert(
+              validIds.map(skId => ({
+                student_id: studentProfileId,
+                skill_id: skId,
+                proficiency: 'intermediate' as const,
+              }))
+            )
           }
-        } catch (skErr) {
-          console.warn('Notice saving student_skills:', skErr)
+        } catch (e) {
+          console.warn('skills save error:', e)
         }
       }
 
-      // 4. Add Education
-      if (formData.institution && spData?.id) {
+      // 4. Save Education
+      if (studentProfileId && formData.institution.trim()) {
         try {
           await supabase.from('student_education').insert({
-            student_id: spData.id,
+            student_id: studentProfileId,
             institution: formData.institution,
             degree: formData.degree || 'Bachelor Degree',
             field_of_study: formData.fieldOfStudy || formData.categoryName,
-            end_year: parseInt(formData.graduationYear) || new Date().getFullYear(),
+            end_year: parseInt(formData.graduationYear) || new Date().getFullYear() + 1,
           })
-        } catch (eduErr) {
-          console.warn('Notice saving education:', eduErr)
+        } catch (e) {
+          console.warn('education save error:', e)
         }
       }
 
-      // 5. Add Availability
-      if (spData?.id) {
+      // 5. Save Availability using onConflict: student_id
+      if (studentProfileId && formData.availabilityTypes.length > 0) {
         try {
           await supabase.from('student_availability').upsert({
-            student_id: spData.id,
-            types: formData.availabilityTypes,
-            preferred_work_mode: formData.preferredWorkMode,
-          })
-        } catch (avErr) {
-          console.warn('Notice saving availability:', avErr)
+            student_id: studentProfileId,
+            types: formData.availabilityTypes as any,
+            preferred_work_mode: formData.preferredWorkMode as any,
+          }, { onConflict: 'student_id' })
+        } catch (e) {
+          console.warn('availability save error:', e)
         }
       }
 
       await refreshUser()
-      toast.success('Onboarding completed! Welcome to your SkillBridge Dashboard.')
+      toast.success('🎉 Profile saved! Welcome to your SkillBridge dashboard.')
       navigate('/dashboard')
     } catch (err: any) {
-      console.error('Onboarding notice:', err)
-      toast.success('Profile created! Welcome to SkillBridge.')
+      console.error('Onboarding submit error:', err)
+      toast.success('Profile saved!')
       navigate('/dashboard')
     } finally {
       setSubmitting(false)
@@ -240,130 +283,146 @@ export default function StudentOnboarding() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-indigo-50/30 py-12 px-4">
       <div className="max-w-2xl mx-auto">
         <div className="text-center mb-8">
-          <div className="w-12 h-12 bg-primary-600 rounded-2xl flex items-center justify-center mx-auto mb-3 text-white shadow-md">
+          <div className="w-12 h-12 bg-primary-600 rounded-2xl flex items-center justify-center mx-auto mb-3 text-white shadow-lg">
             <GraduationCap size={24} />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Set Up Your Student Profile</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Step {currentStep + 1} of {steps.length}: <span className="font-semibold text-primary-600">{steps[currentStep]}</span>
+            Step {currentStep + 1} of {STEPS.length}:{' '}
+            <span className="font-semibold text-primary-600">{STEPS[currentStep]}</span>
           </p>
         </div>
 
-        {/* Stepper Header */}
-        <div className="flex items-center justify-between mb-8 overflow-x-auto pb-2 scrollbar-hide px-2">
-          {steps.map((label, idx) => (
-            <div key={label} className="flex items-center flex-shrink-0">
+        <div className="flex items-center justify-center mb-8 gap-1 overflow-x-auto pb-1">
+          {STEPS.map((label, idx) => (
+            <React.Fragment key={label}>
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-all ${
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all flex-shrink-0 ${
                   idx < currentStep
                     ? 'bg-emerald-500 text-white'
                     : idx === currentStep
                     ? 'bg-primary-600 text-white shadow-md ring-4 ring-primary-100'
                     : 'bg-gray-200 text-gray-500'
                 }`}
+                title={label}
               >
-                {idx < currentStep ? <Check size={14} /> : idx + 1}
+                {idx < currentStep ? <Check size={13} /> : idx + 1}
               </div>
-              {idx < steps.length - 1 && (
-                <div className={`w-6 sm:w-10 h-0.5 mx-1 ${idx < currentStep ? 'bg-emerald-500' : 'bg-gray-200'}`} />
+              {idx < STEPS.length - 1 && (
+                <div className={`w-5 sm:w-8 h-0.5 flex-shrink-0 ${idx < currentStep ? 'bg-emerald-500' : 'bg-gray-200'}`} />
               )}
-            </div>
+            </React.Fragment>
           ))}
         </div>
 
-        <Card padding="lg" className="shadow-lg border-gray-200">
-          {/* Step 1: Basic Info */}
+        <Card padding="lg" className="shadow-xl border-gray-200">
           {currentStep === 0 && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Step 1 — Basic Information</h2>
-                <p className="text-sm text-gray-500">Let businesses know who you are and where you are located.</p>
+                <p className="text-sm text-gray-500 mt-1">Help businesses know who you are and where you're located.</p>
               </div>
-
               <Input
-                label="Full Name"
-                placeholder="e.g. Alex Kumar"
+                label="Full Name *"
+                placeholder="e.g. Arjun Kumar"
                 value={formData.fullName}
                 onChange={e => setFormData({ ...formData, fullName: e.target.value })}
                 required
               />
               <Input
-                label="Phone Number (WhatsApp or Mobile)"
+                label="Phone Number (WhatsApp / Mobile)"
                 placeholder="+91 98765 43210"
                 value={formData.phone}
+                leftIcon={<Phone size={15} />}
                 onChange={e => setFormData({ ...formData, phone: e.target.value })}
               />
               <Input
-                label="Location (City, Country)"
-                placeholder="e.g. Bangalore, India / Remote"
+                label="Your Location (City, State)"
+                placeholder="e.g. Bangalore, Karnataka / Remote"
                 value={formData.location}
+                leftIcon={<MapPin size={15} />}
                 onChange={e => setFormData({ ...formData, location: e.target.value })}
               />
             </div>
           )}
 
-          {/* Step 2: Category Selection */}
           {currentStep === 1 && (
             <div className="space-y-4">
               <div>
-                <h2 className="text-lg font-bold text-gray-900">Step 2 — Select Your Primary Category</h2>
-                <p className="text-sm text-gray-500">Pick the work domain that matches your passion and career goals.</p>
+                <h2 className="text-lg font-bold text-gray-900">Step 2 — Choose Your Primary Domain</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Pick the field that best describes your skills & career goals.
+                </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto pr-1">
-                {categories.map((cat: any) => {
-                  const isSelected = formData.categoryId === cat.id || formData.categoryName === cat.name
-                  const icon = cat.icon || (cat.name.includes('Dev') ? '💻' : cat.name.includes('Design') ? '🎨' : cat.name.includes('Market') ? '📈' : cat.name.includes('Video') ? '🎬' : cat.name.includes('Data') ? '🤖' : '💼')
-                  return (
-                    <button
-                      key={cat.id || cat.slug || cat.name}
-                      type="button"
-                      onClick={() => handleSelectCategory(cat)}
-                      className={`p-4 rounded-xl border text-left transition-all relative flex flex-col justify-between ${
-                        isSelected
-                          ? 'border-primary-600 bg-primary-50 text-primary-900 ring-2 ring-primary-500/30 shadow-xs'
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-800'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <span className="text-2xl flex-shrink-0">{icon}</span>
-                        <div>
-                          <span className="text-sm font-bold block">{cat.name}</span>
-                          <span className="text-xs text-gray-500 line-clamp-2 mt-0.5">
-                            {cat.description || 'Explore opportunities and projects in this field.'}
-                          </span>
+              {loadingCats ? (
+                <div className="flex items-center justify-center py-8 text-gray-400 text-sm gap-2">
+                  <div className="w-4 h-4 border-2 border-primary-400 border-t-transparent rounded-full animate-spin" />
+                  Loading categories...
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1">
+                  {categories.map((cat: any) => {
+                    const isSelected = formData.categoryId === cat.id || formData.categoryId === cat.slug
+                    const icon = getCatIcon(cat)
+                    return (
+                      <button
+                        key={cat.id || cat.slug}
+                        type="button"
+                        onClick={() => handleSelectCategory(cat)}
+                        className={`p-4 rounded-xl border text-left transition-all relative ${
+                          isSelected
+                            ? 'border-primary-600 bg-primary-50 ring-2 ring-primary-500/30 shadow-sm'
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <span className="text-2xl flex-shrink-0">{icon}</span>
+                          <div>
+                            <span className={`text-sm font-bold block ${isSelected ? 'text-primary-900' : 'text-gray-800'}`}>
+                              {cat.name}
+                            </span>
+                            {cat.description && (
+                              <span className="text-xs text-gray-500 line-clamp-2 mt-0.5">
+                                {cat.description}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
+                        {isSelected && (
+                          <div className="mt-3 flex items-center gap-1 text-xs font-semibold text-primary-700">
+                            <CheckCircle2 size={13} /> Selected ✓
+                          </div>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
 
-                      {isSelected && (
-                        <div className="mt-3 flex items-center gap-1 text-xs font-semibold text-primary-700">
-                          <CheckCircle2 size={14} /> Selected Category
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
+              {formData.categoryName && (
+                <p className="text-xs text-emerald-700 font-semibold flex items-center gap-1">
+                  <CheckCircle2 size={13} /> Selected: {formData.categoryName}
+                </p>
+              )}
             </div>
           )}
 
-          {/* Step 3: Skills */}
           {currentStep === 2 && (
             <div className="space-y-4">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Step 3 — Select Your Key Skills</h2>
-                <p className="text-sm text-gray-500">
-                  Recommended skills for <span className="font-semibold text-primary-600">{formData.categoryName}</span>:
+                <p className="text-sm text-gray-500 mt-1">
+                  Skills for <span className="font-semibold text-primary-600">{formData.categoryName}</span>:
                 </p>
               </div>
 
-              {/* Quick skill pills for 1-click selection */}
-              <div className="flex flex-wrap gap-2 pt-1">
-                {availableSkillsList.map((sk: any) => {
-                  const val = sk.id || sk.slug || sk.name
+              <div className="flex flex-wrap gap-2">
+                {availableSkills.map((sk: any) => {
+                  const val = sk.id
                   const isSelected = formData.selectedSkillIds.includes(val)
                   return (
                     <button
@@ -377,7 +436,7 @@ export default function StudentOnboarding() {
                       }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
                         isSelected
-                          ? 'bg-primary-600 text-white border-primary-600 shadow-xs'
+                          ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
                           : 'bg-white text-gray-700 border-gray-300 hover:border-primary-400 hover:bg-primary-50'
                       }`}
                     >
@@ -387,61 +446,56 @@ export default function StudentOnboarding() {
                 })}
               </div>
 
-              <div className="pt-2">
+              {skillOptions.length > 0 && (
                 <MultiSelect
                   label="Search or Add More Skills"
                   options={skillOptions}
                   value={formData.selectedSkillIds}
                   onChange={ids => setFormData({ ...formData, selectedSkillIds: ids })}
-                  placeholder="Type to filter skills..."
+                  placeholder="Type to search skills..."
                 />
-              </div>
+              )}
 
               {formData.selectedSkillIds.length > 0 && (
                 <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
-                  <Check size={14} /> {formData.selectedSkillIds.length} skills selected for your profile
+                  <Check size={13} /> {formData.selectedSkillIds.length} skill{formData.selectedSkillIds.length !== 1 ? 's' : ''} selected
                 </p>
               )}
             </div>
           )}
 
-          {/* Step 4: Experience */}
           {currentStep === 3 && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Step 4 — Experience Level</h2>
-                <p className="text-sm text-gray-500">Select your current stage of professional and academic experience.</p>
+                <p className="text-sm text-gray-500 mt-1">Select your current stage of professional experience.</p>
               </div>
-
               <Select
                 label="Experience Level"
-                options={expLevels}
+                options={EXP_LEVELS}
                 value={formData.experienceLevel}
                 onChange={e => setFormData({ ...formData, experienceLevel: e.target.value })}
               />
-
               <div className="bg-primary-50 border border-primary-100 rounded-xl p-4 text-xs text-primary-800 space-y-1">
                 <p className="font-semibold flex items-center gap-1">
-                  <Sparkles size={14} className="text-primary-600" /> SkillBridge Tip:
+                  <Sparkles size={13} className="text-primary-600" /> SkillBridge Tip:
                 </p>
                 <p>
-                  Even if you are a Fresher, showcasing class projects, hackathon prototypes, or GitHub repos helps you rank at the top of business searches!
+                  Even as a fresher, class projects, GitHub repos, or hackathon prototypes put you at the top of business searches!
                 </p>
               </div>
             </div>
           )}
 
-          {/* Step 5: Education */}
           {currentStep === 4 && (
             <div className="space-y-4">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Step 5 — Education Details</h2>
-                <p className="text-sm text-gray-500">Provide your college, university, or current degree program.</p>
+                <p className="text-sm text-gray-500 mt-1">Your college, university, or current degree program.</p>
               </div>
-
               <Input
                 label="College / University Name"
-                placeholder="e.g. National Institute of Technology / University of Delhi"
+                placeholder="e.g. IIT Delhi / Amity University / VIT"
                 value={formData.institution}
                 onChange={e => setFormData({ ...formData, institution: e.target.value })}
               />
@@ -454,32 +508,32 @@ export default function StudentOnboarding() {
                 />
                 <Input
                   label="Field of Study"
-                  placeholder="e.g. Computer Science / Design"
+                  placeholder="e.g. Computer Science"
                   value={formData.fieldOfStudy}
                   onChange={e => setFormData({ ...formData, fieldOfStudy: e.target.value })}
                 />
               </div>
               <Input
-                label="Graduation Year"
+                label="Expected Graduation Year"
                 type="number"
+                placeholder={new Date().getFullYear().toString()}
                 value={formData.graduationYear}
                 onChange={e => setFormData({ ...formData, graduationYear: e.target.value })}
               />
             </div>
           )}
 
-          {/* Step 6: Availability */}
           {currentStep === 5 && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Step 6 — Preferred Work & Availability</h2>
-                <p className="text-sm text-gray-500">Select what types of job roles or projects you are open to.</p>
+                <p className="text-sm text-gray-500 mt-1">Tell businesses what types of work you're open to.</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Work Types You are Open To</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Work Types You're Open To *</label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {availabilityTypes.map(t => {
+                  {AVAILABILITY_TYPES.map(t => {
                     const isChecked = formData.availabilityTypes.includes(t.value)
                     return (
                       <button
@@ -506,39 +560,31 @@ export default function StudentOnboarding() {
 
               <Select
                 label="Preferred Work Mode"
-                options={[
-                  { value: 'remote', label: '🏠 Remote (Work from Anywhere)' },
-                  { value: 'hybrid', label: '🏢 Hybrid (Mix of Remote & Office)' },
-                  { value: 'on_site', label: '📍 On-site Office' },
-                ]}
+                options={WORK_MODES}
                 value={formData.preferredWorkMode}
                 onChange={e => setFormData({ ...formData, preferredWorkMode: e.target.value })}
               />
             </div>
           )}
 
-          {/* Step 7: Portfolio & Links */}
           {currentStep === 6 && (
             <div className="space-y-4">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Step 7 — Portfolio & Professional Bio</h2>
-                <p className="text-sm text-gray-500">Add your project links to help employers discover your real work.</p>
+                <p className="text-sm text-gray-500 mt-1">Add your links so employers can discover your real work.</p>
               </div>
-
               <Input
                 label="Professional Headline"
-                placeholder="e.g. Frontend React Developer | Building scalable web apps"
+                placeholder="e.g. React Developer | Building scalable web apps"
                 value={formData.headline}
                 onChange={e => setFormData({ ...formData, headline: e.target.value })}
               />
-
               <Textarea
-                label="Short Bio"
-                placeholder="Write a brief introduction about your projects, skills, and what kind of roles you are seeking..."
+                label="Short Bio (About Me)"
+                placeholder="A brief introduction about your skills, passion, and what roles you're seeking..."
                 value={formData.bio}
                 onChange={e => setFormData({ ...formData, bio: e.target.value })}
               />
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Input
                   label="GitHub Profile URL"
@@ -553,14 +599,12 @@ export default function StudentOnboarding() {
                   onChange={e => setFormData({ ...formData, linkedinUrl: e.target.value })}
                 />
               </div>
-
               <Input
                 label="Portfolio / Live Project URL"
-                placeholder="https://myportfolio.vercel.app"
+                placeholder="https://yourportfolio.vercel.app"
                 value={formData.portfolioUrl}
                 onChange={e => setFormData({ ...formData, portfolioUrl: e.target.value })}
               />
-
               <Input
                 label="Resume URL (PDF / Google Drive link)"
                 placeholder="https://drive.google.com/file/d/..."
@@ -570,7 +614,6 @@ export default function StudentOnboarding() {
             </div>
           )}
 
-          {/* Controls */}
           <div className="flex items-center justify-between mt-8 border-t border-gray-100 pt-5">
             <Button
               type="button"
@@ -582,13 +625,18 @@ export default function StudentOnboarding() {
               Back
             </Button>
 
-            {currentStep < steps.length - 1 ? (
+            {currentStep < STEPS.length - 1 ? (
               <Button type="button" onClick={handleNext} rightIcon={<ChevronRight size={16} />}>
-                Next: {steps[currentStep + 1]}
+                Next: {STEPS[currentStep + 1]}
               </Button>
             ) : (
-              <Button type="button" onClick={handleSubmit} isLoading={submitting} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                Complete Profile & Go to Dashboard
+              <Button
+                type="button"
+                onClick={handleSubmit}
+                isLoading={submitting}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                ✨ Complete Profile & Save
               </Button>
             )}
           </div>
